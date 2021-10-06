@@ -1,0 +1,145 @@
+---
+title: "Plot_growth_curves_calc_growth_rates"
+author: "Dai Le"
+date: "10/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# **Plot Growth Curves of different bacterial strains with GGPLOT in R**
+This notebook presents functions to load and plot bacterial growth data.
+log base 10 of OD600 is plotted as a function of time.
+Growth rates are calculated as (ln(2)/DoublingTime)*60
+For simplicity, growth rates and doubling time are calculated in a different 
+process. The spreadsheet only includes final values.
+```{r}
+#Import packages
+library(tidyverse)
+library(readxl)
+library(plotly)
+library(openxlsx)
+library(patchwork)
+library(gridExtra)
+library(ggprism)
+library(scales)
+library(emojifont)
+library(Cairo)
+library(ggplot2)
+library(ggnewscale)
+library(radiant.data)
+library(stats)
+library(hrbrthemes)
+```
+```{r}
+# Check file existence and download
+CheckAndDownload<-function(file1,url,destfile){
+  if (file.exists(file1)){
+    print('File exists, will delete')
+    file.remove(file1)
+    downloaded<-download.file(url,destfile,method='auto',quiet=FALSE,mode='wb')
+  }else {
+    downloaded<-download.file(url,destfile,method='auto',quiet=FALSE,mode='wb')
+  }
+}
+
+```
+
+```{r}
+# Function to select data based on genotype
+SelectData<-function(dataframe,genotype){
+  dataframe[(dataframe$Genotype == genotype), ]
+}
+```
+
+```{r}
+# Function to plot growth curves
+Plot<-function(data,x,y,color_f,genotype,k){
+# Generate values to show minor ticks in log base 10
+tval <- sort(as.vector(sapply(seq(1,9), function(x) x*10^seq(-3,1)))) 
+ttxt <- rep("",length(tval))
+ttxt[seq(1,37,9)] <- as.character(tval)[seq(1,37,9)]
+# Plot function
+plot<-ggplot(data,aes(x,y))+
+        geom_point(aes(color=color_f,
+                       fill=color_f),
+                       size=4,
+                       stroke=1.5)+
+        scale_x_continuous(name="Time(m)",
+                           expand=c(0,0),
+                           limits=c(0,400))+
+        scale_y_log10(name="OD600(Å)",
+                      breaks=c(0.01,0.1,1),
+                      limits=c(0.005,2),
+                      guide="prism_minor",
+                      minor_breaks=tval,
+                      expand=c(0,0))+
+        scale_color_prism(palette="prism_dark")+
+        theme_prism(palette = "prism_dark", base_size = 16)+
+        labs(title=genotype)+
+        theme(legend.position = c(.1,.9),
+              legend.key.height = unit(10, "pt"),
+              legend.title = element_blank(),
+              text=element_text(size=22))+
+        # Include average growth rate values in the plot
+        geom_text(x=350, y=0.01, label=paste("k~",k), size=7)
+plot
+}
+
+```
+
+```{r}
+# Main function to integrate all functions
+main<-function(file1,url,destfile){
+  # First download file
+  CheckAndDownload(file1,url,destfile)
+  # From file, create 2 dataframes for growth curves and growth rates data
+  df<-read_xlsx(destfile,sheet="GrowthCurves", col_names = TRUE)
+  df2<-read_xlsx(destfile,sheet="GrowthRates", col_names = TRUE)
+  # Calculate average growth rates
+  dfd<-df2 %>% group_by(Strain,Genotype) %>%
+                    summarise(avg_k=format(round(mean(GrowthRate), 2), nsmall = 2))
+  # Create a list of individual plots
+  p<-list()
+  # Iterate through all genotypes
+  for (i in unique(df$Genotype)){
+    png(filename = paste(i,"GrowthCurve.png"), width = 1280, height = 800,
+      units = "px", pointsize = 20, bg = "white", res =120,
+      restoreConsole = TRUE)
+    # Create index to plot curves 1 by 1 
+    for (j in 1:length(unique(df$Genotype))){
+      # Select dataframes for growth curves and growth rates data
+      dff<-SelectData(dataframe=df,genotype=i)
+      dfdf<-SelectData(dataframe=dfd,genotype=i)
+      # Plot data
+      p[[j]]<-Plot(data=dff,
+                   x=dff$Time_m,
+                   y=dff$OD600,
+                   color_f=factor(dff$Date),
+                   genotype=i,
+                   k=dfdf$avg_k[dfdf$Genotype == i])
+     
+    }
+    # Print plots and turn off dev
+    print(p[[j]])
+    dev.off()
+  }
+}
+
+```
+
+```{r}
+#Instantiate main function with information on url and file names
+url<-"https://www.dropbox.com/s/8bjclc5gev6l0c8/GrowthCurves.xlsx?dl=1"
+file1<-"GrowthCurves.xlsx"
+destfile<-"GrowthCurves_dl.xlsx"
+main(file1,url,destfile)
+```
+
+
+
+
+
+
+
